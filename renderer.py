@@ -26,18 +26,15 @@ class VolumeRenderer(torch.nn.Module):
         rays_density=rays_density.squeeze()
         # print("delta size: ", deltas.shape)
         # print("rays size: ", rays_density.shape)
-        # alpha = 1 - torch.exp(-deltas * rays_density)
-        # T = torch.cumprod(1.0 - alpha + eps, -1)
-        # T = torch.roll(T, 1, -1)
-        # T[..., 0] = 1.0
-        # weights = T * alpha      
         alpha = 1 - torch.exp(-deltas * rays_density)
-
+        T = torch.cumprod(1.0 - alpha + eps, -1)
+        T = torch.roll(T, 1, -1)
+        T[..., 0] = 1.0
+        weights = T * alpha      
+        # alpha = 1 - torch.exp(-deltas * rays_density)
         # Do volume rendering
-        
-
         # TODO (1.5): Compute weight used for rendering from transmittance and alpha
-        weights = alpha * torch.cumprod(torch.cat([torch.ones((alpha.shape[0], 1)).cuda(), 1.-alpha + 1e-10], -1), -1)[:, :-1]
+        # weights = alpha * torch.cumprod(torch.cat([torch.ones((alpha.shape[0], 1)).cuda(), 1.-alpha + 1e-10], -1), -1)[:, :-1]
         return weights
     
     def _aggregate(
