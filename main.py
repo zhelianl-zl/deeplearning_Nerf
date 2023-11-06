@@ -115,7 +115,8 @@ def render_images(
 
         # TODO (1.4): Visualize sample points as point cloud
         if cam_idx == 0 and file_prefix == '':
-            rend = render_points(f'images/{file_prefix}_{cam_idx}_points.png', points)
+            print("Exported ray point cloud")
+            rend = render_points(f'images/raypoints{file_prefix}_{cam_idx}_points.png', points)
 
         # TODO (1.5): Implement rendering in renderer.py
         out = model(ray_bundle)
@@ -135,11 +136,16 @@ def render_images(
 
         # Save
         if save:
-            plt.imsave(
-                f'{file_prefix}_{cam_idx}.png',
-                image
-            )
-    
+            if file_prefix=='':
+                plt.imsave(
+                    f'images/{file_prefix}_{cam_idx}.png',
+                    image
+                )
+            else:
+                plt.imsave(
+                    f'{file_prefix}_{cam_idx}.png',
+                    image
+                )    
     return all_images
 
 
@@ -153,7 +159,7 @@ def render(
     # Render spiral
     cameras = create_surround_cameras(3.0, n_poses=20)
     all_images = render_images(
-        model, cameras, cfg.data.image_size, save=True, file_prefix='images/'
+        model, cameras, cfg.data.image_size, save=True
     )
     imageio.mimsave('images/part_1.gif', [np.uint8(im * 255) for im in all_images], loop = 0)
 

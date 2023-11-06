@@ -43,7 +43,7 @@ The command remains the same as above and it is not needed to be run separately 
 ```bash
 python main.py --config-name=box
 ```
-The results will be stored at `images/_0_points.png` for rays point sampling.
+The results will be stored at `images/raypoints_0_points.png` for rays point sampling.
 
 ###  1.5. Volume rendering (30 points)
 
