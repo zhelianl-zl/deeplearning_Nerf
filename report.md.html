@@ -3,34 +3,48 @@
                                 **Project 3**
                             **Darshit Desai**
                             **Dir id: darshit; Email: darshit@umd.edu**                           
-Exploring loss functions (15 points)
+Differentiable Volume Rendering
 ===============================================================================
-This section will involve defining a loss function, for fitting voxels, point clouds and meshes.
+In the emission-absorption (EA) model described in class, volumes are typically described by their *appearance* (e.g. emission) and *geometry* (absorption) at *every point* in 3D space. For part 1 of the assignment, you will implement a ***Differentiable Renderer*** for EA volumes, which you will use in parts 2 and 3. Differentiable renderers are extremely useful for 3D learning problems --- one reason is because they allow you to optimize scene parameters (i.e. perform inverse rendering) from image supervision only!
 
-Fitting a voxel grid (5 points)
+Familiarize yourself with the code structure
 -------------------------------------------------------------------------------
-In this subsection, we will define binary cross entropy loss that can help us <b>fit a 3D binary voxel grid</b>.
-Define the loss functions [here](https://github.com/848f-3DVision/assignment2/blob/main/losses.py#L4-L9) in `losses.py` file. 
-For this you can use the pre-defined losses in pytorch library.
+There are four major components of our differentiable volume rendering pipeline:
 
-Run the file `python fit_data.py --type 'vox'`, to fit the source voxel grid to the target voxel grid. 
+* ***The camera***: `pytorch3d.CameraBase`
+* ***The scene***: `SDFVolume` in `implicit.py`
+* ***The sampling routine***: `StratifiedSampler` in `sampler.py`
+* ***The renderer***: `VolumeRenderer` in `renderer.py`
 
-**Visualize the optimized voxel grid along-side the ground truth voxel grid using the tools learnt in previous section.**
-<!---add the image of my first mesh from images/cow_render.jpg using html md style from the root folder-->
- 
-**Answer-** For this I used the Binary Cross Entropy Loss function and applied Sigmoid on top of it to clamp probability values between 0.0 and 1.0. The relevant torch function for that is mentioned below:
+`StratifiedSampler` provides a method for sampling multiple points along a ray traveling through the scene (also known as *raymarching*). Together, a sampler and a renderer describe a rendering pipeline. Like traditional graphics pipelines, this rendering procedure is independent of the scene and camera.
 
-```python
-def voxel_loss(voxel_src,voxel_tgt):
-	# voxel_src: b x h x w x d
-	# voxel_tgt: b x h x w x d
-    # implement some loss for binary voxel grids
-	bceloss = torch.nn.BCEWithLogitsLoss()
-	loss = bceloss(voxel_src, voxel_tgt)
-	return loss
+The scene, sampler, and renderer are all packaged together under the `Model` class in `main.py`. In particular the `Model`'s forward method invokes a `VolumeRenderer` instance with a sampling strategy and volume as input.
+
+Also, take a look at the `RayBundle` class in `ray_utils.py`, which provides a convenient wrapper around several inputs to the volume rendering procedure per ray.
+
+Outline of tasks
+-------------------------------------------------------------------------------
+In order to perform rendering, you will implement the following routines:
+
+1. **Ray sampling from cameras**: you will fill out methods in `ray_utils.py` to generate world space rays from a particular camera.
+2. **Point sampling along rays**: you will fill out the `StratifiedSampler` class to generate sample points along each world space ray
+3. **Rendering**: you will fill out the `VolumeRenderer` class to *evaluate* a volume function at each sample point along a ray, and aggregate these evaluations to perform rendering.
+
+Ray sampling (10 points)
+-------------------------------------------------------------------------------
+Take a look at the `render_images` function in `main.py`. It loops through a set of cameras, generates rays for each pixel on a camera, and renders these rays using a `Model` instance.
+
+### Visualization
+
+You can run the code for part 1 with:
+
+```bash
+python main.py --config-name=box
 ```
-The various stages of the data fitting at different iteration numbers are shown below:
 
+Once you have implemented these methods, verify that your output matches the TA output by visualizing both `xy_grid` and `rays` with the `vis_grid` and `vis_rays` functions in the `render_images` function in `main.py`. **By default, the above command will crash and return an error**. However, it should reach your visualization code before it does.
+ 
+**Answer-** These are my outputs after implementing `get_pixels_from_image` in `ray_utils.py` and `get_rays_from_pixels` in `ray_utils.py` given below:
 
 <style>
   table {
@@ -52,38 +66,30 @@ The various stages of the data fitting at different iteration numbers are shown 
 </style>
 <table style="width: 100%; text-align: center;">
   <tr>
-    <td style="width: 50%;" colspan="2">
+    <td style="width: 50%;">
       <figure style="display: inline-block; width: 100%;">
-        <img src="Results_problem1/Voxels/voxel_fitdatagt99999.gif" alt="Ground truth Voxels" />
-        <figcaption>Ground truth Voxels</figcaption>
+        <img src="images/prob1.3_grid.png" alt="My image output for xy grid" />
+        <figcaption>My image output for xy grid</figcaption>
+      </figure>
+    </td>
+    <td style="width: 50%;">
+      <figure style="display: inline-block; width: 100%;">
+        <img src="images/prob1.3_rays.png" alt="My image output for rays" />
+        <figcaption>My image output for rays</figcaption>
       </figure>
     </td>
   </tr>
   <tr>
     <td style="width: 50%;">
       <figure style="display: inline-block; width: 100%;">
-        <img src="Results_problem1/Voxels/voxel_fitdata0.gif" alt="Voxel status at 0 iterations" />
-        <figcaption>Voxel render status at 0 iterations</figcaption>
+        <img src="ta_images/grid.png" alt="TA's image output for xy grid" />
+        <figcaption>TA's image output for xy grid</figcaption>
       </figure>
     </td>
     <td style="width: 50%;">
       <figure style="display: inline-block; width: 100%;">
-        <img src="Results_problem1/Voxels/voxel_fitdata1000.gif" alt="Voxel status at 1000 iterations" />
-        <figcaption>Voxel status at 1,000 iterations</figcaption>
-      </figure>
-    </td>
-  </tr>
-  <tr>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_problem1/Voxels/voxel_fitdata5000.gif" alt="Voxel status at 5000 iterations" />
-        <figcaption>Voxel status at 5,000 iterations</figcaption>
-      </figure>
-    </td>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_problem1/Voxels/voxel_fitdata99999.gif" alt="Voxel status at 100000 iterations" />
-        <figcaption>Voxel status at 100,000 iterations</figcaption>
+        <img src="ta_images/rays.png" alt="TA's image output for rays" />
+        <figcaption>TA's image output for rays</figcaption>
       </figure>
     </td>
   </tr>
