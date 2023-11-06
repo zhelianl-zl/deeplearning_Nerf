@@ -190,7 +190,6 @@ python main.py --config-name=train_box
 This will optimize the position and side lengths of a box, given a few ground truth images with known camera poses (in the `data` folder). Report the center of the box, and the side lengths of the box after training, rounded to the nearest `1/100` decimal place.
 
 **Answer-** Here is the center of the box and their respective side lengths after training:
-  
   ```bash
   Box center: (0.2502206563949585, 0.25057458877563477, -0.00048012484330683947)
   Box side lengths: (2.005105972290039, 1.503570318222046, 1.5033116340637207)
@@ -238,6 +237,7 @@ Here are a few things to note:
 4. You can use *Positional Encoding* of the input to the network to achieve higher quality. We provide an implementation of positional encoding in the `HarmonicEmbedding` class in `implicit.py`.
 
 **Answer-** Here's the model that I implemented using HarmonicEmbedding for positional encoding and I used the MLP architecture MLPwithskips given in the starter code as given below:
+
 ```BASH
 Nerf model:-
 Model(
