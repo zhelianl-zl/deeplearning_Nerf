@@ -103,6 +103,8 @@ Once you have done this, use the `render_points` method in `render_functions.py`
 
 **Answer-** These are my outputs compared with TA outputs after implementing `StratifiedSampler` in `sampler.py` given below:
 
+Note I modified the function call of rasterizer to explicity change the background to black,
+
 <table style="width: 100%; text-align: center;">
   <tr>
     <td style="width: 100%;">
@@ -129,11 +131,11 @@ Finally, we can implement volume rendering! With the `configs/box.yaml` configur
 
 You'll then use the following equation to render color along a ray:
 
-![Spiral Rendering of Part 1](ta_images/color.PNG)
+![Equation for rendering color](ta_images/color.PNG)
 
 where `σ` is density, `Δt` is the length of current ray segment, and `L_e` is color:
 
-![Spiral Rendering of Part 1](ta_images/transmittance.PNG)
+![Equation for calculating transmittance](ta_images/transmittance.PNG)
 
 Compute the weights `T * (1 - exp(-σ * Δt))` in `VolumeRenderer._compute_weights`, and perform the summation in `VolumeRenderer._aggregate`. Note that for the first segment `T = 1`. (Hint: using torch.cumprod would be useful in computing the transmittance)
 
@@ -144,22 +146,8 @@ Use weights, and aggregation function to render *color* and *depth* (stored in `
 By default, your results will be written out to `images/part_1.gif`. Provide a visualization of the depth in your write-up.
 
 **Answer-** 
-For this I used the inbuilt pytorch3d function `pytorch3d.loss.mesh_laplacian_smoothing`, The following is the function definition as mentioned in the code:
-```python
-def smoothness_loss(mesh_src):
-	# implement laplacian smoothening loss
-	loss_laplacian = mesh_laplacian_smoothing(mesh_src, method="uniform")
-	return loss_laplacian
-```
+My visualization for the 360 render of cube and the depth image is as given below:
 <table style="width: 100%; text-align: center;">
-  <tr>
-    <td style="width: 50%;" colspan="2">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_problem1\Mesh\mesh_fitdatagt99999.gif" alt="Ground truth Mesh" />
-        <figcaption>Ground truth Mesh</figcaption>
-      </figure>
-    </td>
-  </tr>
   <tr>
     <td style="width: 50%;">
       <figure style="display: inline-block; width: 100%;">
@@ -171,20 +159,6 @@ def smoothness_loss(mesh_src):
       <figure style="display: inline-block; width: 100%;">
         <img src="Results_problem1\Mesh\mesh_fitdata500.gif" alt="Mesh status at 500 iterations" />
         <figcaption>Mesh render status at 500 iterations</figcaption>
-      </figure>
-    </td>
-  </tr>
-  <tr>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_problem1\Mesh\mesh_fitdata5000.gif" alt="Mesh status at 5000 iterations" />
-        <figcaption>Mesh status at 5,000 iterations</figcaption>
-      </figure>
-    </td>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_problem1\Mesh\mesh_fitdata99999.gif" alt="Point Cloud status at 100000 iterations" />
-        <figcaption>Mesh status at 100,000 iterations</figcaption>
       </figure>
     </td>
   </tr>
