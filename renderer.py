@@ -93,7 +93,7 @@ class VolumeRenderer(torch.nn.Module):
             depth_weights = weights.view(self._chunk_size, -1)
             expanded_depth_values = depth_values.view(depth_weights.shape[0], depth_weights.shape[1], -1).squeeze(2)
             # print("Expanded depth values shape: ", expanded_depth_values.shape)
-            depth = self._aggregate(weights, expanded_depth_values)
+            depth = self._aggregate(depth_weights, expanded_depth_values)
 
             cur_out = {
                 'feature': rgb_feature,

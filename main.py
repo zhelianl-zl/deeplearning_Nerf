@@ -136,7 +136,7 @@ def render_images(
         # Save
         if save:
             plt.imsave(
-                f'images/{file_prefix}_{cam_idx}.png',
+                f'{file_prefix}_{cam_idx}.png',
                 image
             )
     
@@ -153,7 +153,7 @@ def render(
     # Render spiral
     cameras = create_surround_cameras(3.0, n_poses=20)
     all_images = render_images(
-        model, cameras, cfg.data.image_size
+        model, cameras, cfg.data.image_size, save=True, file_prefix='images/'
     )
     imageio.mimsave('images/part_1.gif', [np.uint8(im * 255) for im in all_images], loop = 0)
 
