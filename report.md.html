@@ -164,723 +164,134 @@ My visualization for the 360 render of cube and the depth image is as given belo
   </tr>
 </table>
 
-Reconstructing 3D from single view (85 points)
+Optimizing a basic implicit volume
 ===============================================================================
 
-Image to voxel grid (20 points)
+Random ray sampling (5 points)
 -------------------------------------------------------------------------------
-In this subsection, we will define a neural network to decode binary voxel grids.
-Define the decoder network [here](https://github.com/848f-3DVision/assignment2/blob/main/model.py#L149) in `model.py` file, then reference your decoder [here](https://github.com/848f-3DVision/assignment2/blob/main/model.py#L182) in `model.py` file.
 
-We have provided a [decoder network](https://github.com/848f-3DVision/assignment2/blob/main/model.py#L55-L129) in `model.py`, but you can also modify it as you wish. 
+Since you have now implemented a differentiable volume renderer, we can use it to optimize the parameters of a volume! We have provided a basic training loop in the `train` method in `main.py`.
 
-Run the file `python train_model.py --type 'vox'`, to train single view to voxel grid pipeline, feel free to tune the hyperparameters as per your need.
-
-After trained, visualize the input RGB, ground truth voxel grid and predicted voxel in `eval_model.py` file using:
-`python eval_model.py --type 'vox' --load_checkpoint`
-
-You need to add the respective visualization code in `eval_model.py`
-
-On your webpage, you should include visuals of any three examples in the test set. For each example show the input RGB, render of the predicted 3D voxel grid and a render of the ground truth mesh.
-
-**Answer-**
-
-For this I tried training three different models:
-* Implicit MLP Decoder which was provided with the source code
-* A 3D up convolution decoder model, where I flatten the latent code given by the linear layer of the encoder and then upsampled the output using `Conv3D` upto 32x32x32
-* A simple linear fully connected network, where I reshape the last layer to 32x32x32
-
-An important point to note is that during training none of the models had any activations in the output layer, hence in the evaluation a sigmoid was added to clamp the output probability between 0.0 and 1.0
-
-I chose the simple linear FC network since it was faster to train out of all three and had comparable results in visualization and F1 score with 3D up convolution network, The model is shown below:
+Depending on how many sample points we take for each ray, volume rendering can consume a lot of memory on the GPU (especially during the backward pass of gradient descent). Because of this, it usually makes sense to sample a subset of rays from a full image for each training iteration. In order to do this, implement the `get_random_pixels_from_image` method in `ray_utils.py`, invoked here:
 
 ```python
-self.decoder = nn.Sequential(
-                nn.Linear(512, 1024), 
-                nn.ReLU(),
-                nn.Linear(1024, 2048),
-                nn.ReLU(), 
-                nn.Linear(2048, 32*32*32)) 
+xy_grid = get_random_pixels_from_image(cfg.training.batch_size, image_size, camera) # TODO: implement in ray_utils.py
+```
+Loss and training (5 points)
+-------------------------------------------------------------------------------
+Replace the loss in `train` with mean squared error between the predicted colors and ground truth colors `rgb_gt`.
+
+Once you've done this, you can run train a model with
+
+```bash
+python main.py --config-name=train_box
 ```
 
-The results of the three examples for the linear network evaluation are shown below:
-* Example 1:
-<table style="width: 100%; text-align: center;">
-  <tr>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="ImageInputs\0_mesh.png" alt="Input Image to the Linear Network" />
-        <figcaption>Input Image to the Linear Network</figcaption>
-      </figure>
-    </td>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\voxmodels\voxmodel_LinearLayers\results\Q2_1_0_gt_vox.gif" alt="Ground truth Voxel Representation" />
-        <figcaption>Ground truth Voxel Representation</figcaption>
-      </figure>
-    </td>
-  </tr>
-  <tr>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\Mesh Models\Modelwithwsmooth0.5\Resultswsmooth0.5\Q2_3_0_gt_mesh.gif" alt="Ground truth Mesh Representation" />
-        <figcaption>Ground truth Mesh Representation</figcaption>
-      </figure>
-    </td>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\voxmodels\voxmodel_LinearLayers\results\Q2_1_0_vox.gif" alt="Voxel Prediction Render Representation" />
-        <figcaption>Voxel Prediction Render Representation</figcaption>
-      </figure>
-    </td>
-  </tr>
-</table>
+This will optimize the position and side lengths of a box, given a few ground truth images with known camera poses (in the `data` folder). Report the center of the box, and the side lengths of the box after training, rounded to the nearest `1/100` decimal place.
 
-* Example 2:
-<table style="width: 100%; text-align: center;">
-  <tr>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="ImageInputs\300_mesh.png" alt="Input Image to the Linear Network" />
-        <figcaption>Input Image to the Linear Network</figcaption>
-      </figure>
-    </td>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\voxmodels\voxmodel_LinearLayers\results\Q2_1_3_gt_vox.gif" alt="Ground truth Voxel Representation" />
-        <figcaption>Ground truth Voxel Representation</figcaption>
-      </figure>
-    </td>
-  </tr>
-  <tr>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\Mesh Models\Modelwithwsmooth0.5\Resultswsmooth0.5\Q2_3_3_gt_mesh.gif" alt="Ground truth Mesh Representation" />
-        <figcaption>Ground truth Mesh Representation</figcaption>
-      </figure>
-    </td>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\voxmodels\voxmodel_LinearLayers\results\Q2_1_3_vox.gif" alt="Voxel Prediction Render Representation" />
-        <figcaption>Voxel Prediction Render Representation</figcaption>
-      </figure>
-    </td>
-  </tr>
-</table>
-
-* Example 3:
-<table style="width: 100%; text-align: center;">
-  <tr>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="ImageInputs\400_mesh.png" alt="Input Image to the Linear Network" />
-        <figcaption>Input Image to the Linear Network</figcaption>
-      </figure>
-    </td>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\voxmodels\voxmodel_LinearLayers\results\Q2_1_4_gt_vox.gif" alt="Ground truth Voxel Representation" />
-        <figcaption>Ground truth Voxel Representation</figcaption>
-      </figure>
-    </td>
-  </tr>
-  <tr>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\Mesh Models\Modelwithwsmooth0.5\Resultswsmooth0.5\Q2_3_4_gt_mesh.gif" alt="Ground truth Mesh Representation" />
-        <figcaption>Ground truth Mesh Representation</figcaption>
-      </figure>
-    </td>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\voxmodels\voxmodel_LinearLayers\results\Q2_1_4_vox.gif" alt="Voxel Prediction Render Representation" />
-        <figcaption>Voxel Prediction Render Representation</figcaption>
-      </figure>
-    </td>
-  </tr>
-</table>
-
-Image to point cloud (20 points)
+**Answer-** Here is the center of the box and their respective side lengths after training:
+  
+  ```bash
+  Box center: (0.2502206563949585, 0.25057458877563477, -0.00048012484330683947)
+  Box side lengths: (2.005105972290039, 1.503570318222046, 1.5033116340637207)
+  ```
+Visualization
 -------------------------------------------------------------------------------
+The code renders a spiral sequence of the optimized volume in `images/part_2.gif`. Compare this gif to the one below, and attach it in your write-up:
 
-In this subsection, we will define a neural network to decode point clouds.
-Similar as above, define the decoder network [here](https://github.com/848f-3DVision/assignment2/blob/main/model.py#L155) in `model.py` file, then reference your decoder [here](https://github.com/848f-3DVision/assignment2/blob/main/model.py#L215) in `model.py` file
+**Answer-** Here is the gif of the spiral sequence of the optimized volume compared with TA's output:
 
-Run the file `python train_model.py --type 'point'`, to train single view to pointcloud pipeline, feel free to tune the hyperparameters as per your need.
+<table style="width: 100%; text-align: center;">
+  <tr>
+    <td style="width: 50%;">
+      <figure style="display: inline-block; width: 100%;">
+        <img src="images/part_2.gif" alt="360 degree render of the optimized volume with random sampling" />
+        <figcaption>360 degree render of the optimized volume with random sampling (My output)</figcaption>
+      </figure>
+    </td>
+    <td style="width: 50%;">
+      <figure style="display: inline-block; width: 100%;">
+        <img src="ta_images/part_2.gif" alt="TA's output for Part 3" />
+        <figcaption>TA's output for Part 3</figcaption>
+      </figure>
+    </td>
+  </tr>
+</table>
 
-After trained, visualize the input RGB, ground truth point cloud and predicted  point cloud in `eval_model.py` file using:
-`python eval_model.py --type 'point' --load_checkpoint`
+Optimizing a Neural Radiance Field (NeRF) (30 points)
+===============================================================================
 
-You need to add the respective visualization code in `eval_model.py`.
+In this part, you will implement an implicit volume as a Multi-Layer Perceptron (MLP) in the `NeuraRadianceField` class in `implicit.py`. This MLP should map 3D position to volume density and color. Specifically:
 
-On your webpage, you should include visuals of any three examples in the test set. For each example show the input RGB, render of the predicted 3D point cloud and a render of the ground truth mesh.
+1. Your MLP should take in a `RayBundle` object in its forward method, and produce color and density for each sample point in the RayBundle.
+2. You should also fill out the loss in `train_nerf` in the `main.py` file.
 
-**Answer-**
+You will then use this implicit volume to optimize a scene from a set of RGB images. We have implemented data loading, training, checkpointing for you, but this part will still require you to do a bit more legwork than for Parts 1 and 2. You will have to write the code for the MLP yourself --- feel free to reference the NeRF paper, though you should not directly copy code from an external repository.
 
-For this representation I followed the model architecture given in the comments of the starter code, I tried modifying the same architecture iteratively by adding and removing layers and increasing the output layer size upto 4096 neurons. I also experimented with the number of points the visualization although gets denser. More of it is dicussed in the hyperparameters tuning section.
+Implementation
+-------------------------------------------------------------------------------
+Here are a few things to note:
 
-The architecture is given as below:
-```python
-self.decoder = torch.nn.Sequential(
-                nn.Linear(in_features=512, out_features=1024),
-                nn.ReLU(),
-                nn.Linear(in_features=1024, out_features=2048),
-                nn.ReLU(),
-                nn.Linear(in_features=2048, out_features=4096),
-                nn.ReLU(),
-                nn.Linear(in_features=4096, out_features=3*self.n_point),
-                nn.Tanh()
-                )
+1. For now, your NeRF MLP does not need to handle *view dependence*, and can solely depend on 3D position.
+2. You should use the `ReLU` activation to map the first network output to density (to ensure that density is non-negative)
+3. You should use the `Sigmoid` activation to map the remaining raw network outputs to color
+4. You can use *Positional Encoding* of the input to the network to achieve higher quality. We provide an implementation of positional encoding in the `HarmonicEmbedding` class in `implicit.py`.
+
+**Answer-** Here's the model that I implemented using HarmonicEmbedding for positional encoding and I used the MLP architecture MLPwithskips given in the starter code as given below:
+```BASH
+Nerf model:-
+Model(
+  (implicit_fn): NeuralRadianceField(
+    (harmonic_embedding_xyz): HarmonicEmbedding()
+    (MultiLP): MLPWithInputSkips(
+      (mlp): ModuleList(
+        (0): Sequential(
+          (0): Linear(in_features=39, out_features=128, bias=True)
+          (1): ReLU(inplace=True)
+        )
+        (1): Sequential(
+          (0): Linear(in_features=128, out_features=128, bias=True)
+          (1): ReLU(inplace=True)
+        )
+        (2): Sequential(
+          (0): Linear(in_features=128, out_features=128, bias=True)
+          (1): ReLU(inplace=True)
+        )
+        (3): Sequential(
+          (0): Linear(in_features=167, out_features=128, bias=True)
+          (1): ReLU(inplace=True)
+        )
+        (4): Sequential(
+          (0): Linear(in_features=128, out_features=128, bias=True)
+          (1): ReLU(inplace=True)
+        )
+        (5): Sequential(
+          (0): Linear(in_features=128, out_features=128, bias=True)
+          (1): ReLU(inplace=True)
+        )
+      )
+    )
+    (relu): ReLU()
+    (sigmoid): Sigmoid()
+    (linear1): Linear(in_features=128, out_features=4, bias=True)
+  )
+  (sampler): StratifiedRaysampler()
+  (renderer): VolumeRenderer()
+)
+```
+Visualization
+-------------------------------------------------------------------------------
+You can train a NeRF on the lego bulldozer dataset with
+
+```bash
+python main.py --config-name=nerf_lego
 ```
 
-The results of the three examples for the linear network evaluation are shown below:
-* Example 1:
-<table style="width: 100%; text-align: center;">
-  <tr>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="ImageInputs\0_mesh.png" alt="Input Image to the Linear Network" />
-        <figcaption>Input Image to the Linear Network</figcaption>
-      </figure>
-    </td>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\PointModels\Model2_pointsbaseline\Results\Q2_2_0_gt_point.gif" alt="Ground truth Point Cloud Representation" />
-        <figcaption>Ground truth Point Cloud Representation</figcaption>
-      </figure>
-    </td>
-  </tr>
-  <tr>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\Mesh Models\Modelwithwsmooth0.5\Resultswsmooth0.5\Q2_3_0_gt_mesh.gif" alt="Ground truth Mesh Representation" />
-        <figcaption>Ground truth Mesh Representation</figcaption>
-      </figure>
-    </td>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\PointModels\Model2_pointsbaseline\Results\Q2_2_0_point.gif" alt="Point Cloud Prediction Render Representation" />
-        <figcaption>Point Cloud Prediction Render Representation</figcaption>
-      </figure>
-    </td>
-  </tr>
-</table>
+This will create a NeRF with the `NeuralRadianceField` class in `implicit.py`, and use it as the `implicit_fn` in `VolumeRenderer`. It will also train a NeRF for 250 epochs on 128x128 images.
 
-* Example 2:
-<table style="width: 100%; text-align: center;">
-  <tr>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="ImageInputs\300_mesh.png" alt="Input Image to the Linear Network" />
-        <figcaption>Input Image to the Linear Network</figcaption>
-      </figure>
-    </td>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\PointModels\Model2_pointsbaseline\Results\Q2_2_3_gt_point.gif" alt="Ground truth Point Cloud Representation" />
-        <figcaption>Ground truth Point Cloud Representation</figcaption>
-      </figure>
-    </td>
-  </tr>
-  <tr>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\Mesh Models\Modelwithwsmooth0.5\Resultswsmooth0.5\Q2_3_3_gt_mesh.gif" alt="Ground truth Mesh Representation" />
-        <figcaption>Ground truth Mesh Representation</figcaption>
-      </figure>
-    </td>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\PointModels\Model2_pointsbaseline\Results\Q2_2_3_point.gif" alt="Point Cloud Prediction Render Representation" />
-        <figcaption>Point Cloud Prediction Render Representation</figcaption>
-      </figure>
-    </td>
-  </tr>
-</table>
+Feel free to modify the experimental settings in `configs/nerf_lego.yaml` --- though the current settings should allow you to train a NeRF on low-resolution inputs in a reasonable amount of time. After training, a spiral rendering will be written to `images/part_3.gif`. Report your results. It should look something like this:
 
-* Example 3:
-<table style="width: 100%; text-align: center;">
-  <tr>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="ImageInputs\200_mesh.png" alt="Input Image to the Linear Network" />
-        <figcaption>Input Image to the Linear Network</figcaption>
-      </figure>
-    </td>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\PointModels\Model2_pointsbaseline\Results\Q2_2_2_gt_point.gif" alt="Ground truth Point Cloud Representation" />
-        <figcaption>Ground truth Point Cloud Representation</figcaption>
-      </figure>
-    </td>
-  </tr>
-  <tr>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\Mesh Models\Modelwithwsmooth0.5\Resultswsmooth0.5\Q2_3_2_gt_mesh.gif" alt="Ground truth Mesh Representation" />
-        <figcaption>Ground truth Mesh Representation</figcaption>
-      </figure>
-    </td>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\PointModels\Model2_pointsbaseline\Results\Q2_2_2_point.gif" alt="Point Cloud Prediction Render Representation" />
-        <figcaption>Point Cloud Prediction Render Representation</figcaption>
-      </figure>
-    </td>
-  </tr>
-</table>
-
-Image to mesh (20 points)
--------------------------------------------------------------------------------
-In this subsection, we will define a neural network to decode mesh.
-Similar as above, define the decoder network [here](https://github.com/848f-3DVision/assignment2/blob/main/model.py#L177) in `model.py` file, then reference your decoder [here](https://github.com/848f-3DVision/assignment2/blob/main/model.py#L220) in `model.py` file
-
-Run the file `python train_model.py --type 'mesh'`, to train single view to mesh pipeline, feel free to tune the hyperparameters as per your need. We also encourage the student to try different mesh initializations [here](https://github.com/848f-3DVision/assignment2/blob/main/model.py#L174)
+**Answer-** Here is the gif of the spiral sequence of the optimized volume compared with TA's output:
 
 
-After trained, visualize the input RGB, ground truth mesh and predicted mesh in `eval_model.py` file using:
-`python eval_model.py --type 'mesh' --load_checkpoint`
-
-You need to add the respective visualization code in `eval_model.py`.
-
-On your webpage, you should include visuals of any three examples in the test set. For each example show the input RGB, render of the predicted mesh and a render of the ground truth mesh.
-
-**Answer-**
-For this representation I followed the model architecture given in the comments of the starter code, I tried modifying the same architecture iteratively by adding and removing layers. Note I also used a different w_smooth value for the mesh model, More of it in the hyperparameters tuning section.
-
-The architecture is given as below, Note for this I used the w_smooth value as 0.5:
-```python
-self.decoder = torch.nn.Sequential(
-                nn.Linear(in_features=512, out_features=512),
-                nn.ReLU(),
-                nn.Linear(in_features=512, out_features=1024),
-                nn.ReLU(),
-                nn.Linear(in_features=1024, out_features=1024),
-                nn.ReLU(),  
-                nn.Linear(in_features=1024, out_features=2048),
-                nn.ReLU(),
-                nn.Linear(in_features=2048, out_features=3*mesh_pred.verts_packed().shape[0]),
-                nn.Tanh()
-              )    
-```
-The results of the three examples for the linear network evaluation are shown below:
-* Example 1:
-<table style="width: 150%; text-align: center;">
-  <tr>
-    <td style="width: 33.33%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="ImageInputs\0_mesh.png" alt="Input Image to the Linear Network" />
-        <figcaption>Input Image to the Linear Network</figcaption>
-      </figure>
-    </td>
-    <td style="width: 33.33%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\Mesh Models\Modelwithwsmooth0.5\Resultswsmooth0.5\Q2_3_0_gt_mesh.gif" alt="Ground truth Mesh Representation" />
-        <figcaption>Ground truth Mesh Representation</figcaption>
-      </figure>
-    </td>
-    <td style="width: 33.33%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\Mesh Models\Modelwithwsmooth0.5\Resultswsmooth0.5\Q2_3_0_mesh.gif" alt="Predicted Mesh Representation" />
-        <figcaption>Predicted Mesh Representation</figcaption>
-      </figure>
-    </td>
-  </tr>
-</table>
-
-* Example 2:
-<table style="width: 150%; text-align: center;">
-  <tr>
-    <td style="width: 33.33%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="ImageInputs\300_mesh.png" alt="Input Image to the Linear Network" />
-        <figcaption>Input Image to the Linear Network</figcaption>
-      </figure>
-    </td>
-    <td style="width: 33.33%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\Mesh Models\Modelwithwsmooth0.5\Resultswsmooth0.5\Q2_3_3_gt_mesh.gif" alt="Ground truth Mesh Representation" />
-        <figcaption>Ground truth Mesh Representation</figcaption>
-      </figure>
-    </td>
-    <td style="width: 33.33%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\Mesh Models\Modelwithwsmooth0.5\Resultswsmooth0.5\Q2_3_3_mesh.gif" alt="Predicted Mesh Representation" />
-        <figcaption>Predicted Mesh Representation</figcaption>
-      </figure>
-    </td>
-  </tr>
-</table>
-
-* Example 3:
-<table style="width: 150%; text-align: center;">
-  <tr>
-    <td style="width: 33.33%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="ImageInputs\200_mesh.png" alt="Input Image to the Linear Network" />
-        <figcaption>Input Image to the Linear Network</figcaption>
-      </figure>
-    </td>
-    <td style="width: 33.33%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\Mesh Models\Modelwithwsmooth0.5\Resultswsmooth0.5\Q2_3_2_gt_mesh.gif" alt="Ground truth Mesh Representation" />
-        <figcaption>Ground truth Mesh Representation</figcaption>
-      </figure>
-    </td>
-    <td style="width: 33.33%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\Mesh Models\Modelwithwsmooth0.5\Resultswsmooth0.5\Q2_3_2_mesh.gif" alt="Predicted Mesh Representation" />
-        <figcaption>Predicted Mesh Representation</figcaption>
-      </figure>
-    </td>
-  </tr>
-</table>
-
-Quantitative comparisions(10 points)
--------------------------------------------------------------------------------
-Quantitatively compare the F1 score of 3D reconstruction for meshes vs pointcloud vs voxelgrids.
-**Provide an intutive explaination justifying the comparision.**
-
-For evaluating you can run:
-`python eval_model.py --type voxel|mesh|point --load_checkpoint`
-
-**Answer-**
-The F1 score plots for the three models are as follows:
-
-<table style="width: 100%; text-align: center;">
-  <tr>
-    <td style="width: 100%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\voxmodels\voxmodel_LinearLayers\eval_vox.png" alt="F1 @ 0.05(VOX)" />
-        <figcaption>F1 @ 0.05(VOX) = 81.916%</figcaption>
-      </figure>
-    </td>
-  </tr>
-  <tr>
-    <td style="width: 100%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\PointModels\Model2_pointsbaseline\eval_point.png" alt="F1 @ 0.05(POINT)" />
-        <figcaption>F1 @ 0.05(POINT) = 96.126%</figcaption>
-      </figure>
-    </td>
-  </tr>
-  <tr>
-    <td style="width: 100%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_Problem2.1-2.5\Mesh Models\Modelwithwsmooth0.5\eval_mesh.png" alt="F1 @ 0.05(MESH)" />
-        <figcaption>F1 @ 0.05(MESH) = 92.034%</figcaption>
-      </figure>
-    </td>
-  </tr>
-</table>
-
-**Intuitive Explaination-**
-From the above plots Quantitatively it can be said that-
-
-* Voxels have the lowest average F1 score among all three representations, This is primarily because the voxel is rendered from 32x32x32 volume and hence the resolution is very low, This is also evident from the visualization of the voxels during fit_data script where the voxels removed block wise based on probability and the resolution is pretty much dependent on the volume chosen by the user
-* Point Clouds achieve near perfect scores because of the resolution as well as the primary property of the point clouds inherent property of not enforcing any connectivity between the points, Hence the point cloud can be easily fit to the ground truth mesh. This is because the point clouds not enforcing connectivity and being able to move freely in space.
-* Mesh had an intermediate F1 score, because of the use of an inital ico_sphere topology which simply cannot model holes or complicated topologies, Hence the mesh representation is not able to achieve the same F1 score as the point cloud representation. Also it is difficult to interpret connectivity from single view images as well as the requirement of predicting holes which leads to improper predicitons.
-
-In conclusion, it can be said that a more mean average topological mesh shape of a chair would help in better reconstruction of the chair in the mesh reconstruction, Also the point cloud representation is the best among the three representations. A more finer representation of voxel resolution might increase the score but it will come at a cost of increase in training times and also increase in rendering times.
-
-Analyse effects of hyperparms variations (5 points)
--------------------------------------------------------------------------------
-Analyse the results, by varying an hyperparameter of your choice.
-For example `n_points` or `vox_size` or `w_chamfer` or `initial mesh(ico_sphere)` etc.
-Try to be unique and conclusive in your analysis.
-
-**Answer-**
-The following hyperparameters in general were varied and incorporated into the models:
-* Use of stepping down of Learning Rate to control fluctuations in the loss function. This was done by stepping down LR by 0.1 every 2000 iterations. Compared to a constant learning rate this achieved better results. Note results of this were displayed in the earlier sections.
-* Use of gradient_clipping during training to avoid exploding gradients. This was done by using `torch.nn.utils.clip_grad_norm_` function. This was done for all the models.
-* Another hyperparameter which was tuned was the batch_size which was increased from 2 to 16 for all iterations of the training, later for the last 2000 iterations the batch_size was kept 30 as it ensured better convergence. This was done for all the models.
-* Finally the hyperparameters which affected the visualization were `n_points` for Point Clouds and `w_smooth` for Meshes. The results of the same are shown below:
-  * Point Clouds:
-    For point clouds the number of points were varied, the following results show their effect on the F1 score and the visualization. The increase in F1 score shows that more number of points are being sample for harder to infer surfaces and hence the F1 score increases. The visualization shows that the point cloud gets denser with increase in number of points. The results are shown below:
-    * F1 scores:
-        The following plots show the F1 score vs n_points for the point cloud representation. The F1 score was calculated using the `eval_model.py` script. The results are shown below:
-        <table style="width: 150%; text-align: center;">
-        <tr>
-          <td style="width: 33.33%;">
-            <figure style="display: inline-block; width: 100%;">
-              <img src="Results_Problem2.1-2.5\PointModels\Model2_pointsbaseline\eval_point.png" alt="F1 @ 0.05(VOX)" />
-              <figcaption>For n_points = 5000; F1 @ 0.05(VOX) = 96.126%</figcaption>
-            </figure>
-          </td>
-          <td style="width: 33.33%;">
-            <figure style="display: inline-block; width: 100%;">
-              <img src="Results_Problem2.1-2.5\PointModels\Model2_npoints10000\eval_point.png" alt="F1 @ 0.05(POINT)" />
-              <figcaption>For n_points = 10000; F1 @ 0.05(POINT) = 96.891%</figcaption>
-            </figure>
-          </td>
-          <td style="width: 33.33%;">
-            <figure style="display: inline-block; width: 100%;">
-              <img src="Results_Problem2.1-2.5\PointModels\Model3_npoints25000\eval_point.png" alt="F1 @ 0.05(MESH)" />
-              <figcaption>For n_points = 25000; F1 @ 0.05(MESH) = 97.009%</figcaption>
-            </figure>
-          </td>
-        </tr>
-      </table>
-    * Visualization of results:
-      The visualization of the results with increasing number of points shows that with increase in number of points the representation gets denser but only at some locations, Another observation is that the points get noisier with increase in number of points, this indicates that a longer amount of training might be required for higher number of points, The results of two examples are shown below
-      * Example: 1
-          <table style="width: 100%; text-align: center;">
-          <tr>
-            <td style="width: 50%;">
-              <figure style="display: inline-block; width: 100%;">
-                <img src="ImageInputs\0_mesh.png" alt="Input Image to the Linear Network" />
-                <figcaption>Input Image to the Linear Network</figcaption>
-              </figure>
-            </td>
-            <td style="width: 50%;">
-              <figure style="display: inline-block; width: 100%;">
-                <img src="Results_Problem2.1-2.5\PointModels\Model2_pointsbaseline\Results\Q2_2_0_gt_point.gif" alt="Ground truth Point Cloud Representation" />
-                <figcaption>Ground truth Point Cloud Representation</figcaption>
-              </figure>
-            </td>
-          </tr>
-          <tr>
-            <td style="width: 50%;" colspan="2">
-              <figure style="display: inline-block; width: 100%;">
-                <img src="Results_Problem2.1-2.5\PointModels\Model2_pointsbaseline\Results\Q2_2_0_point.gif" alt="Point Cloud Prediction Render Representation" />
-                <figcaption>Point Cloud Prediction Render Representation 5000 POINTS</figcaption>
-              </figure>
-            </td>
-            <tr>
-              <td style="width: 50%;" colspan="2">
-                <figure style="display: inline-block; width: 100%;">
-                  <img src="Results_Problem2.1-2.5\PointModels\Model2_npoints10000\Results\Q2_2_0_point.gif" alt="Point Cloud Prediction Render Representation" />
-                  <figcaption>Point Cloud Prediction Render Representation 10000 POINTS</figcaption>
-                </figure>
-              </td>
-            </tr>
-            <tr>
-              <td style="width: 50%;" colspan="2">
-                <figure style="display: inline-block; width: 100%;">
-                  <img src="Results_Problem2.1-2.5\PointModels\Model3_npoints25000\Results\Q2_2_0_point.gif" alt="Point Cloud Prediction Render Representation" />
-                  <figcaption>Point Cloud Prediction Render Representation 25000 POINTS</figcaption>
-                </figure>
-              </td>
-          </tr>
-        </table>
-      * Example: 2
-        <table style="width: 100%; text-align: center;">
-          <tr>
-            <td style="width: 50%;">
-              <figure style="display: inline-block; width: 100%;">
-                <img src="ImageInputs\400_mesh.png" alt="Input Image to the Linear Network" />
-                <figcaption>Input Image to the Linear Network</figcaption>
-              </figure>
-            </td>
-            <td style="width: 50%;">
-              <figure style="display: inline-block; width: 100%;">
-                <img src="Results_Problem2.1-2.5\PointModels\Model2_pointsbaseline\Results\Q2_2_4_gt_point.gif" alt="Ground truth Point Cloud Representation" />
-                <figcaption>Ground truth Point Cloud Representation</figcaption>
-              </figure>
-            </td>
-          </tr>
-          <tr>
-            <td style="width: 50%;" colspan="2">
-              <figure style="display: inline-block; width: 100%;">
-                <img src="Results_Problem2.1-2.5\PointModels\Model2_pointsbaseline\Results\Q2_2_4_point.gif" alt="Point Cloud Prediction Render Representation" />
-                <figcaption>Point Cloud Prediction Render Representation 5000 POINTS</figcaption>
-              </figure>
-            </td>
-            <tr>
-              <td style="width: 50%;" colspan="2">
-                <figure style="display: inline-block; width: 100%;">
-                  <img src="Results_Problem2.1-2.5\PointModels\Model2_npoints10000\Results\Q2_2_4_point.gif" alt="Point Cloud Prediction Render Representation" />
-                  <figcaption>Point Cloud Prediction Render Representation 10000 POINTS</figcaption>
-                </figure>
-              </td>
-            </tr>
-            <tr>
-              <td style="width: 50%;" colspan="2">
-                <figure style="display: inline-block; width: 100%;">
-                  <img src="Results_Problem2.1-2.5\PointModels\Model3_npoints25000\Results\Q2_2_4_point.gif" alt="Point Cloud Prediction Render Representation" />
-                  <figcaption>Point Cloud Prediction Render Representation 25000 POINTS</figcaption>
-                </figure>
-              </td>
-          </tr>
-        </table>
-  * Meshes:
-    * F1 Scores:
-        The F1 scores for the mesh representation were calculated using the `eval_model.py` script. The results are shown below:
-        <table style="width: 100%; text-align: center;">
-        <tr>
-          <td style="width: 50%;">
-            <figure style="display: inline-block; width: 100%;">
-              <img src="Results_Problem2.1-2.5\Mesh Models\Modelwithwsmooth0.5\eval_mesh.png" alt="F1 @ 0.05(VOX)" />
-              <figcaption>For w_smooth = 0.5; F1 @ 0.05(VOX) = 92.034%</figcaption>
-            </figure>
-          </td>
-          <td style="width: 50%;">
-            <figure style="display: inline-block; width: 100%;">
-              <img src="Results_Problem2.1-2.5\Mesh Models\Model_withwsmooth5\eval_mesh.png" alt="F1 @ 0.05(POINT)" />
-              <figcaption>For w_smooth = 5.0; F1 @ 0.05(POINT) = 66.825%</figcaption>
-            </figure>
-          </td>
-      </table>
-    * Visualization of results:
-        The visualization of results show that w_smooth=5 leads to oversmoothening of the surfaces resulting in almost same surface predicitions for all the examples, This is because the w_smooth=5 leads to a very high penalty for the laplacian smoothing term and hence the surface is almost flat.  Also, changing w_smooth to 5.0 did not provide better results as over smoothing leads to more misalignment with respect to ground truth mesh. This is also evident from the F1 scores. The results are shown below:
-        * Example: 1
-            <table style="width: 100%; text-align: center;">
-            <tr>
-              <td style="width: 50%;">
-                <figure style="display: inline-block; width: 100%;">
-                  <img src="ImageInputs\0_mesh.png" alt="Input Image to the Linear Network" />
-                  <figcaption>Input Image to the Linear Network</figcaption>
-                </figure>
-              </td>
-              <td style="width: 50%;">
-                <figure style="display: inline-block; width: 100%;">
-                  <img src="Results_Problem2.1-2.5\Mesh Models\Modelwithwsmooth0.5\Resultswsmooth0.5\Q2_3_0_gt_mesh.gif" alt="Ground truth Mesh Representation" />
-                  <figcaption>Ground truth Mesh Representation</figcaption>
-                </figure>
-              </td>
-            </tr>
-            <tr>
-              <td style="width: 50%;" colspan="2">
-                <figure style="display: inline-block; width: 100%;">
-                  <img src="Results_Problem2.1-2.5\Mesh Models\Modelwithwsmooth0.5\Resultswsmooth0.5\Q2_3_0_mesh.gif" alt="Mesh Prediction Render Representation" />
-                  <figcaption>Mesh Prediction Render Representation with w_smooth=0.5</figcaption>
-                </figure>
-              </td>
-              <tr>
-                <td style="width: 50%;" colspan="2">
-                  <figure style="display: inline-block; width: 100%;">
-                    <img src="Results_Problem2.1-2.5\Mesh Models\Model_withwsmooth5\Results\Q2_3_0_mesh.gif" alt="Mesh Prediction Render Representation with w_smooth=5" />
-                    <figcaption>Mesh Prediction Render Representation with w_smooth=5</figcaption>
-                  </figure>
-                </td>
-              </tr>
-          </table>
-        * Example: 2
-            <table style="width: 100%; text-align: center;">
-            <tr>
-              <td style="width: 50%;">
-                <figure style="display: inline-block; width: 100%;">
-                  <img src="ImageInputs\400_mesh.png" alt="Input Image to the Linear Network" />
-                  <figcaption>Input Image to the Linear Network</figcaption>
-                </figure>
-              </td>
-              <td style="width: 50%;">
-                <figure style="display: inline-block; width: 100%;">
-                  <img src="Results_Problem2.1-2.5\Mesh Models\Modelwithwsmooth0.5\Resultswsmooth0.5\Q2_3_4_gt_mesh.gif" alt="Ground truth Mesh Representation" />
-                  <figcaption>Ground truth Mesh Representation</figcaption>
-                </figure>
-              </td>
-            </tr>
-            <tr>
-              <td style="width: 50%;" colspan="2">
-                <figure style="display: inline-block; width: 100%;">
-                  <img src="Results_Problem2.1-2.5\Mesh Models\Modelwithwsmooth0.5\Resultswsmooth0.5\Q2_3_4_mesh.gif" alt="Mesh Prediction Render Representation" />
-                  <figcaption>Mesh Prediction Render Representation with w_smooth=0.5</figcaption>
-                </figure>
-              </td>
-              <tr>
-                <td style="width: 50%;" colspan="2">
-                  <figure style="display: inline-block; width: 100%;">
-                    <img src="Results_Problem2.1-2.5\Mesh Models\Model_withwsmooth5\Results\Q2_3_4_mesh.gif" alt="Mesh Prediction Render Representation with w_smooth=5" />
-                    <figcaption>Mesh Prediction Render Representation with w_smooth=5</figcaption>
-                  </figure>
-                </td>
-              </tr>
-          </table>
-
-Interpret your model (10 points)
--------------------------------------------------------------------------------
-Simply seeing final predictions and numerical evaluations is not always insightful. Can you create some visualizations that help highlight what your learned model does? Be creative and think of what visualizations would help you gain insights. There is no `right' answer - although reading some papers to get inspiration might give you ideas.
-
-**Answer-**
-In this section I wanted to check the generalization capability with the edge cases to further check whether the model is generalizing over chair objects or is it taking into account the background of the image as well, just to ensure whether the model is cheating or not, I used the following images for the same:
-
-* White Image Results:
-  <table style="width: 180%; text-align: center;">
-    <tr>
-      <td style="width: 25%;">
-        <figure style="display: inline-block; width: 100%;">
-          <img src="Results_Problem2.6\white_image.png" alt="White Input Image to the Network" />
-          <figcaption>White Input Image to the Network</figcaption>
-        </figure>
-      </td>
-      <td style="width: 25%;">
-        <figure style="display: inline-block; width: 100%;">
-          <img src="Results_Problem2.6\Interpret_voxel_white.gif" alt="Rendered Voxel Prediction Representation for white image" />
-          <figcaption>Rendered Voxel Prediction Representation for white image</figcaption>
-        </figure>
-      </td>
-      <td style="width: 25%;">
-        <figure style="display: inline-block; width: 100%;">
-          <img src="Results_Problem2.6\Interpret_pcl_white.gif" alt="Rendered Point Cloud Prediction Representation for white image" />
-          <figcaption>Rendered Point Cloud Prediction Representation for white image</figcaption>
-        </figure>
-      </td>
-      <td style="width: 25%;">
-        <figure style="display: inline-block; width: 100%;">
-          <img src="Results_Problem2.6\Interpret_mesh_white.gif" alt="Rendered Mesh Prediction Representation for white image" />
-          <figcaption>Rendered Mesh Prediction Representation for white image</figcaption>
-        </figure>
-      </td>
-  </table>
-* Black Image Results:
-  <table style="width: 180%; text-align: center;">
-    <tr>
-      <td style="width: 25%;">
-        <figure style="display: inline-block; width: 100%;">
-          <img src="Results_Problem2.6\black_image.png" alt="Black Input Image to the Network" />
-          <figcaption>Black Input Image to the Network</figcaption>
-        </figure>
-      </td>
-      <td style="width: 25%;">
-        <figure style="display: inline-block; width: 100%;">
-          <img src="Results_Problem2.6\Interpret_voxel_black.gif" alt="Rendered Voxel Prediction Representation for black image" />
-          <figcaption>Rendered Voxel Prediction Representation for black image</figcaption>
-        </figure>
-      </td>
-      <td style="width: 25%;">
-        <figure style="display: inline-block; width: 100%;">
-          <img src="Results_Problem2.6\Interpret_pcl_black.gif" alt="Rendered Point Cloud Prediction Representation for black image" />
-          <figcaption>Rendered Point Cloud Prediction Representation for black image</figcaption>
-        </figure>
-      </td>
-      <td style="width: 25%;">
-        <figure style="display: inline-block; width: 100%;">
-          <img src="Results_Problem2.6\Interpret_mesh_black.gif" alt="Rendered Mesh Prediction Representation for black image" />
-          <figcaption>Rendered Mesh Prediction Representation for black image</figcaption>
-        </figure>
-      </td>
-  </table>
-* Gaussian Image Results:
-  <table style="width: 180%; text-align: center;">
-    <tr>
-      <td style="width: 25%;">
-        <figure style="display: inline-block; width: 100%;">
-          <img src="Results_Problem2.6\gaussian_image.png" alt="Gaussian Input Image to the Network" />
-          <figcaption>Gaussian Input Image to the Network</figcaption>
-        </figure>
-      </td>
-      <td style="width: 25%;">
-        <figure style="display: inline-block; width: 100%;">
-          <img src="Results_Problem2.6\Interpret_voxel_gaussian.gif" alt="Rendered Voxel Prediction Representation for gaussian image" />
-          <figcaption>Rendered Voxel Prediction Representation for gaussian image</figcaption>
-        </figure>
-      </td>
-      <td style="width: 25%;">
-        <figure style="display: inline-block; width: 100%;">
-          <img src="Results_Problem2.6\Interpret_pcl_gaussian.gif" alt="Rendered Point Cloud Prediction Representation for gaussian image" />
-          <figcaption>Rendered Point Cloud Prediction Representation for gaussian image</figcaption>
-        </figure>
-      </td>
-      <td style="width: 25%;">
-        <figure style="display: inline-block; width: 100%;">
-          <img src="Results_Problem2.6\Interpret_mesh_gaussian.gif" alt="Rendered Mesh Prediction Representation for gaussian image" />
-          <figcaption>Rendered Mesh Prediction Representation for gaussian image</figcaption>
-        </figure>
-      </td>
-  </table>
-
-From the above results it can be fairly assumed that the network is clearly overfitting over the background for some cases of black images in point clouds, In case of white and gaussian image inputs, the output shows that the network is not able to distinguish between a white image without any chair and a gaussian noise image. This is a clear case of overfitting and it would be better to use a more complex representation of ground truth data while training to avoid this overfitting issue, Like chairs in various orientations and backgrounds and lighting conditions.
-
-Another test, which could be done on the above used r2n2_shapenet_dataset would dataset augmentation where you give the chair images in various orientations, check the output of the forward pass done on the current model and if it doesn't match the ground truth  (and most probably it will not) include those rotated images in the dataset.
 <!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js" charset="utf-8"></script><script src="https://morgan3d.github.io/markdeep/latest/markdeep.min.js?" charset="utf-8"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>
