@@ -227,17 +227,17 @@ class NeuralRadianceField(torch.nn.Module):
         super().__init__()
 
         self.harmonic_embedding_xyz = HarmonicEmbedding(3, cfg.n_harmonic_functions_xyz)
-        self.harmonic_embedding_dir = HarmonicEmbedding(3, cfg.n_harmonic_functions_dir)
+        # self.harmonic_embedding_dir = HarmonicEmbedding(3, cfg.n_harmonic_functions_dir)
 
         embedding_dim_xyz = self.harmonic_embedding_xyz.output_dim
-        embedding_dim_dir = self.harmonic_embedding_dir.output_dim
+        # embedding_dim_dir = self.harmonic_embedding_dir.output_dim
         op_dim = 128
         self.MultiLP = MLPWithInputSkips(cfg.n_layers_xyz, embedding_dim_xyz, op_dim , embedding_dim_xyz, cfg.n_hidden_neurons_xyz, cfg.append_xyz)
         self.relu = torch.nn.ReLU()
         self.sigmoid = torch.nn.Sigmoid()
         self.linear1 = torch.nn.Linear(op_dim, 4)
     def forward(self, ray_bundle):
-        dir_embed = self.harmonic_embedding_dir(ray_bundle.directions)
+        # dir_embed = self.harmonic_embedding_dir(ray_bundle.directions)
         pos_embed = self.harmonic_embedding_xyz(ray_bundle.sample_points.view(-1, 3))
         op = {"density":None, "feature":None}
         out = self.linear1(self.MultiLP(pos_embed, pos_embed))

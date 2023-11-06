@@ -290,7 +290,8 @@ def train_nerf(
 ):
     # Create model
     model, optimizer, lr_scheduler, start_epoch, checkpoint_path = create_model(cfg)
-
+    print("Nerf model:-")
+    print(model)
     # Load the training/validation data.
     train_dataset, val_dataset, _ = get_nerf_datasets(
         dataset_name=cfg.data.dataset_name,
