@@ -95,89 +95,53 @@ Once you have implemented these methods, verify that your output matches the TA 
   </tr>
 </table>
 
-
-
-
-Fitting a point cloud (5 points)
+Point sampling (10 points)
 -------------------------------------------------------------------------------
+### Visualization
 
-In this subsection, we will define chamfer loss that can help us <b> fit a 3D point cloud </b>.
-Define the loss functions [here](https://github.com/848f-3DVision/assignment2/blob/main/losses.py#L11-L15) in `losses.py` file.
-<b>We expect you to write your own code for this and not use any pytorch3d utilities. You are allowed to use functions inside pytorch3d.ops.knn such as knn_gather or knn_points</b>
+Once you have done this, use the `render_points` method in `render_functions.py` in order to visualize the point samples from the first camera. They should look like this:
 
-Run the file `python fit_data.py --type 'point'`, to fit the source point cloud to the target point cloud. 
-
-**Visualize the optimized point cloud along-side the ground truth point cloud using the tools learnt in previous section.**360-degree Renders (5 points)
-
-**Answer-** For this as mentioned in the question I wrote a function for defining chamfer loss, I took some help from the pytorch3d documentation as it had the source code of the pytorch3d function, The function that I wrote for the chamfer loss is mentioned below:
-```python
-def chamfer_loss(point_cloud_src, point_cloud_tgt):
-    # point_cloud_src, point_cloud_src: b x n_points x 3  
-    # implement chamfer loss from scratch
-    # Verify input shapes
-    assert point_cloud_src.shape[2] == 3, "Input point_cloud_src must have shape B x N x 3"
-    assert point_cloud_tgt.shape[2] == 3, "Input point_cloud_tgt must have shape B x N x 3"
-    # Calculate nearest neighbors using PyTorch3D's knn_points
-    source2target_knn = pytorch3d.ops.knn_points(point_cloud_src, point_cloud_tgt, K=1, norm=2)
-    target2source_knn = pytorch3d.ops.knn_points(point_cloud_tgt, point_cloud_src, K=1, norm=2)
-    # Calculate chamfer loss
-    source2target_dist = source2target_knn.dists[..., 0]  # (B, N)
-    target2source_dist = target2source_knn.dists[..., 0]  # (B, M)
-    loss_chamfer = source2target_dist.mean() + target2source_dist.mean()
-    return loss_chamfer
-```
-The various stages of the data fitting at different iteration numbers are shown below:
+**Answer-** These are my outputs compared with TA outputs after implementing `StratifiedSampler` in `sampler.py` given below:
 
 <table style="width: 100%; text-align: center;">
   <tr>
-    <td style="width: 50%;" colspan="2">
+    <td style="width: 100%;">
       <figure style="display: inline-block; width: 100%;">
-        <img src="Results_problem1\Pointcloud\pointcloud_fitdatagt99999.gif" alt="Ground truth point cloud" />
-        <figcaption>Ground truth point cloud</figcaption>
+        <img src="images/_0_points.png" alt="My ray visualization" />
+        <figcaption>My ray visualization</figcaption>
       </figure>
     </td>
   </tr>
   <tr>
-    <td style="width: 50%;">
+    <td style="width: 100%;">
       <figure style="display: inline-block; width: 100%;">
-        <img src="Results_problem1\Pointcloud\pointcloud_fitdata0.gif" alt="Point Cloud status at 0 iterations" />
-        <figcaption>Point cloud render status at 0 iterations</figcaption>
-      </figure>
-    </td>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_problem1\Pointcloud\pointcloud_fitdata5000.gif" alt="Point Cloud status at 5000 iterations" />
-        <figcaption>Point Cloud status at 5,000 iterations</figcaption>
-      </figure>
-    </td>
-  </tr>
-  <tr>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_problem1\Pointcloud\pointcloud_fitdata10000.gif" alt="Point Cloud status at 10000 iterations" />
-        <figcaption>Point Cloud status at 10,000 iterations</figcaption>
-      </figure>
-    </td>
-    <td style="width: 50%;">
-      <figure style="display: inline-block; width: 100%;">
-        <img src="Results_problem1/Pointcloud/pointcloud_fitdata99999.gif" alt="Point Cloud status at 100000 iterations" />
-        <figcaption>Point Cloud status at 100,000 iterations</figcaption>
+        <img src="ta_images/sample_points.png" alt="TA's ray visualization" />
+        <figcaption>TA's ray visualization</figcaption>
       </figure>
     </td>
   </tr>
 </table>
 
-Fitting a mesh (5 points)
+Volume rendering (30 points)
 -------------------------------------------------------------------------------
 
-In this subsection, we will define an additional smoothening loss that can help us <b> fit a mesh</b>.
-Define the loss functions [here](https://github.com/848f-3DVision/assignment2/blob/main/losses.py#L17-L20) in `losses.py` file.
+Finally, we can implement volume rendering! With the `configs/box.yaml` configuration, we provide you with an `SDFVolume` instance describing a box. You can check out the code for this function in `implicit.py`, which converts a signed distance function into a volume. If you want, you can even implement your own `SDFVolume` classes by creating new signed distance function class, and adding it to `sdf_dict` in `implicit.py`. Take a look at [this great web page](https://www.iquilezles.org/www/articles/distfunctions/distfunctions.htm) for formulas for some simple/complex SDFs.
 
-For this you can use the pre-defined losses in pytorch library.
+You'll then use the following equation to render color along a ray:
 
-Run the file `python fit_data.py --type 'mesh'`, to fit the source mesh to the target mesh. 
+![Spiral Rendering of Part 1](ta_images/color.PNG)
 
-**Visualize the optimized mesh along-side the ground truth mesh using the tools learnt in previous section.**
+where `σ` is density, `Δt` is the length of current ray segment, and `L_e` is color:
+
+![Spiral Rendering of Part 1](ta_images/transmittance.PNG)
+
+Compute the weights `T * (1 - exp(-σ * Δt))` in `VolumeRenderer._compute_weights`, and perform the summation in `VolumeRenderer._aggregate`. Note that for the first segment `T = 1`. (Hint: using torch.cumprod would be useful in computing the transmittance)
+
+Use weights, and aggregation function to render *color* and *depth* (stored in `RayBundle.sample_lengths`). 
+
+### Visualization
+
+By default, your results will be written out to `images/part_1.gif`. Provide a visualization of the depth in your write-up.
 
 **Answer-** 
 For this I used the inbuilt pytorch3d function `pytorch3d.loss.mesh_laplacian_smoothing`, The following is the function definition as mentioned in the code:
