@@ -22,6 +22,7 @@ class VolumeRenderer(torch.nn.Module):
         rays_density: torch.Tensor,
         eps: float = 1e-10
     ):
+        # TODO (1.5): Compute weight used for rendering from transmittance and alpha
         deltas=deltas.squeeze()
         rays_density=rays_density.squeeze()
         # print("delta size: ", deltas.shape)
@@ -30,11 +31,7 @@ class VolumeRenderer(torch.nn.Module):
         T = torch.cumprod(1.0 - alpha + eps, -1)
         T = torch.roll(T, 1, -1)
         T[..., 0] = 1.0
-        weights = T * alpha      
-        # alpha = 1 - torch.exp(-deltas * rays_density)
-        # Do volume rendering
-        # TODO (1.5): Compute weight used for rendering from transmittance and alpha
-        # weights = alpha * torch.cumprod(torch.cat([torch.ones((alpha.shape[0], 1)).cuda(), 1.-alpha + 1e-10], -1), -1)[:, :-1]
+        weights = T * alpha
         return weights
     
     def _aggregate(
@@ -42,13 +39,10 @@ class VolumeRenderer(torch.nn.Module):
         weights: torch.Tensor,
         rays_feature: torch.Tensor
     ):
-        # rays_feature = rays_feature.view(-1, weights.shape[1], 3)
         # TODO (1.5): Aggregate (weighted sum of) features using weights
-        rays_feature = rays_feature.view(-1, weights.shape[1], 3)
-        feature = torch.sum(weights.unsqueeze(-1) * rays_feature, dim=1)
-        
-
+        feature = torch.sum(weights * rays_feature, dim=1)
         return feature
+
 
     def forward(
         self,
@@ -89,16 +83,18 @@ class VolumeRenderer(torch.nn.Module):
                 density.view(-1, n_pts, 1)
             ) 
 
-            # TODO (1.5): Render (color) features using weights
-            # print("Shape of weights",weights.shape)
-            # print("Shape of feature",feature.shape)
-            rgb_feature = self._aggregate(weights, feature)
-
+            # TODO (1.5): Render (color) features using weights          
+            expanded_feature_values = feature.view(weights.shape[0], weights.shape[1], -1).squeeze(2)
+            # print("Shape of feature",expanded_feature_values.shape)
+            # print("Weights shape : ", weights.shape)
+            rgb_weights = weights.unsqueeze(2)
+            rgb_feature = self._aggregate(rgb_weights, expanded_feature_values)
             # TODO (1.5): Render depth map
-            expanded_depth_values = depth_values.unsqueeze(-1).expand(-1, -1, feature.shape[-1])
+            depth_weights = weights.view(self._chunk_size, -1)
+            expanded_depth_values = depth_values.view(depth_weights.shape[0], depth_weights.shape[1], -1).squeeze(2)
+            # print("Expanded depth values shape: ", expanded_depth_values.shape)
             depth = self._aggregate(weights, expanded_depth_values)
 
-            # Return
             cur_out = {
                 'feature': rgb_feature,
                 'depth': depth,
