@@ -84,69 +84,56 @@ def render_images(
     model,
     cameras,
     image_size,
-    save=False,
-    file_prefix=''
+    save=True,
+    file_prefix='images/flower',
+    nears=None,            # ← 新增
+    fars=None              # ← 新增
 ):
     all_images = []
     device = list(model.parameters())[0].device
 
     for cam_idx, camera in enumerate(cameras):
         print(f'Rendering image {cam_idx}')
-
         torch.cuda.empty_cache()
         camera = camera.to(device)
-        xy_grid = get_pixels_from_image(image_size, camera) # TODO (1.3): implement in ray_utils.py
-        ray_bundle = get_rays_from_pixels(xy_grid, image_size, camera) # TODO (1.3): implement in ray_utils.py
 
-        # TODO (1.3): Visualize xy grid using vis_grid
-        if cam_idx == 0 and file_prefix == '':
-            imag1 = vis_grid(xy_grid, image_size)
-            plt.imsave('images/prob1.3_grid.png', imag1)
+        xy_grid   = get_pixels_from_image(image_size, camera)
+        ray_bundle = get_rays_from_pixels(xy_grid, image_size, camera)
 
-        # TODO (1.3): Visualize rays using vis_rays
-        if cam_idx == 0 and file_prefix == '':
-            imag2 = vis_rays(ray_bundle, image_size)
-            plt.imsave('images/prob1.3_rays.png', imag2)
-        
-        # TODO (1.4): Implement point sampling along rays in sampler.py
+        # 渲染时也写入该视角的 near/far（若提供）
+        if nears is not None and fars is not None:
+            ray_bundle.nears = nears[cam_idx]
+            ray_bundle.fars  = fars[cam_idx]
+
+        # 采样点
         ray_bundle = model.sampler(ray_bundle)
-        points = ray_bundle.sample_points
-        points = points.reshape(1, -1, 3)
 
-        # TODO (1.4): Visualize sample points as point cloud
-        if cam_idx == 0 and file_prefix == '':
-            print("Exported ray point cloud")
-            rend = render_points(f'images/raypoints{file_prefix}_{cam_idx}_points.png', points)
-
-        # TODO (1.5): Implement rendering in renderer.py
+        # 前向渲染
         out = model(ray_bundle)
 
-        # Return rendered features (colors)
-        image = np.array(
-            out['feature'].view(
-                image_size[1], image_size[0], 3
-            ).detach().cpu()
-        )
+        # === DEBUG: 渲染输出体检（可留可删）===
+        feat = out['feature']
+        if not torch.isfinite(feat).all():
+            print("[WARN] feature contains NaN/Inf")
+        print("render stats: min/mean/max =",
+              float(feat.min()), float(feat.mean()), float(feat.max()))
+        if 'depth' in out:
+            d = out['depth']
+            print("depth stats: min/mean/max =",
+                  float(d.min()), float(d.mean()), float(d.max()))
+        # ==================================
+
+        image = np.array(out['feature'].view(image_size[1], image_size[0], 3).detach().cpu())
         all_images.append(image)
 
-        # TODO (1.5): Visualize depth
-        if cam_idx == 2 and file_prefix == '':
-            image_depth = np.array(out['depth'].view([image_size[1], image_size[0]]).detach().cpu())
-            plt.imsave(f'images/part_1_depth.png',image_depth)
-
-        # Save
         if save:
-            if file_prefix=='':
-                plt.imsave(
-                    f'images/{file_prefix}_{cam_idx}.png',
-                    image
-                )
-            else:
-                plt.imsave(
-                    f'{file_prefix}_{cam_idx}.png',
-                    image
-                )    
+            os.makedirs(os.path.dirname(file_prefix), exist_ok=True)
+            out_path = f'{file_prefix}_{cam_idx:03d}.png'
+            plt.imsave(out_path, image)
+
     return all_images
+
+
 
 
 def render(
@@ -209,8 +196,16 @@ def train(
             ray_bundle = get_rays_from_pixels(xy_grid, image_size, camera)
             rgb_gt = sample_images_at_xy(image, xy_grid)
 
+            from PIL import Image as PILImage
+            if epoch == start_epoch and iteration == 0:
+                print("rgb_gt mean/std:", float(rgb_gt.mean()), float(rgb_gt.std()))
+                dbg = (images_bhwc[0].detach().cpu().numpy() * 255).astype('uint8')
+                PILImage.fromarray(dbg).save('images/_debug_input.png')
+
             # Run model forward
             out = model(ray_bundle)
+
+            assert torch.isfinite(out["feature"]).all(), "model output has NaN/Inf"
 
             # TODO (2.2): Calculate loss
             loss = torch.mean((out['feature']-rgb_gt)**2)
@@ -291,18 +286,65 @@ def create_model(cfg):
 
     return model, optimizer, lr_scheduler, start_epoch, checkpoint_path
 
-def train_nerf(
-    cfg
-):
-    # Create model
+def train_nerf(cfg):
+    from torch.utils.data import Dataset
+    from llff_loader import load_llff_from_poses_bounds
+
+    cameras_all = None   # 先占位，保证后面可用
+
+    # ===== 准备数据（并把 near/far 写回 cfg.sampler 用于采样范围）=====
+    if cfg.data.dataset_name == "llff_custom":
+        H, W = cfg.data.image_size[1], cfg.data.image_size[0]
+        samples = load_llff_from_poses_bounds(
+            images_dir=cfg.data.images_dir,
+            poses_bounds_path=cfg.data.poses_bounds_path,
+            downscale=int(cfg.data.downscale),
+            device="cuda",
+            target_size=(H, W),
+        )
+
+        cameras_all = [s["camera"] for s in samples]
+        nears_all   = [s["near"]   for s in samples]
+        fars_all    = [s["far"]    for s in samples]
+
+
+        import numpy as np
+        all_nears = np.array([s["near"].item() for s in samples])
+        all_fars  = np.array([s["far"].item()  for s in samples])
+        eps = 1e-3
+        cfg.sampler.min_depth = float(max(all_nears.min(), eps))
+        cfg.sampler.max_depth = float(max(all_fars.max(), cfg.sampler.min_depth + 1e-3))
+        print("Using global near/far:", cfg.sampler.min_depth, cfg.sampler.max_depth)
+
+        class _ListDS(Dataset):
+            def __init__(self, items): self.items = items
+            def __len__(self): return len(self.items)
+            def __getitem__(self, i): return self.items[i]
+
+        n = len(samples)
+        n_train = max(1, int(0.9 * n))
+        train_dataset = _ListDS(samples[:n_train])
+        val_dataset   = _ListDS(samples[n_train:])
+    else:
+        train_dataset, val_dataset, _ = get_nerf_datasets(
+            dataset_name=cfg.data.dataset_name,
+            image_size=[cfg.data.image_size[1], cfg.data.image_size[0]],
+        )
+
+    # ===== 再创建模型（此时 cfg.sampler 已被 near/far 更新）=====
     model, optimizer, lr_scheduler, start_epoch, checkpoint_path = create_model(cfg)
     print("Nerf model:-")
     print(model)
-    # Load the training/validation data.
-    train_dataset, val_dataset, _ = get_nerf_datasets(
-        dataset_name=cfg.data.dataset_name,
-        image_size=[cfg.data.image_size[1], cfg.data.image_size[0]],
-    )
+    # （可选）训练开始前渲染一遍，确认不是全黑
+    if cameras_all is not None:
+        model.eval()
+        with torch.no_grad():
+            imgs = render_images(
+                model, cameras_all, cfg.data.image_size,
+                save=True, file_prefix='images/flower',
+                nears=nears_all, fars=fars_all
+            )
+        model.train()
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
@@ -312,30 +354,39 @@ def train_nerf(
         collate_fn=trivial_collate,
     )
 
-    # Run the main training loop.
+    # ===== 训练循环 =====
     for epoch in range(start_epoch, cfg.training.num_epochs):
         t_range = tqdm.tqdm(enumerate(train_dataloader))
-
         for iteration, batch in t_range:
-            image, camera, camera_idx = batch[0].values()
-            image = image.cuda().unsqueeze(0)
-            camera = camera.cuda()
+            image = batch[0]["image"].cuda()   # 可能是 [1,3,H,W] 或 [3,H,W]
+            camera = batch[0]["camera"].cuda()
+            near   = batch[0]["near"]
+            far    = batch[0]["far"]
 
-            # Sample rays
-            xy_grid = get_random_pixels_from_image(
-                cfg.training.batch_size, cfg.data.image_size, camera
-            )
-            ray_bundle = get_rays_from_pixels(
-                xy_grid, cfg.data.image_size, camera
-            )
-            rgb_gt = sample_images_at_xy(image, xy_grid)
-            # print("Image : ",torch.max(rgb_gt))
-            # Run model forward
-            out = model(ray_bundle)
-            # TODO (3.1): Calculate loss
-            loss = torch.mean((out['feature']-rgb_gt)**2)
+            # 统一成 [B,H,W,3] 以便采样像素
+            if image.dim() == 4 and image.shape[1] == 3:        # [B,3,H,W]
+                images_bhwc = image.permute(0, 2, 3, 1)
+            elif image.dim() == 3 and image.shape[0] == 3:      # [3,H,W]
+                images_bhwc = image.permute(1, 2, 0).unsqueeze(0)
+            elif image.dim() == 4 and image.shape[-1] == 3:     # [B,H,W,3]
+                images_bhwc = image
+            else:
+                raise RuntimeError(f"Unexpected image shape: {tuple(image.shape)}")
 
-            # Take the training step.
+
+            # 采样像素 & 构造光线
+            xy_grid   = get_random_pixels_from_image(cfg.training.batch_size, cfg.data.image_size, camera)
+            ray_bundle = get_rays_from_pixels(xy_grid, cfg.data.image_size, camera)
+
+            # 写入 near/far 到 bundle（字段名按你的 RayBundle 定义，这里用 nears/fars）
+            ray_bundle.nears = near
+            ray_bundle.fars  = far
+
+            # 前向与损失
+            rgb_gt = sample_images_at_xy(images_bhwc, xy_grid)  # [K,3]
+            out    = model(ray_bundle)                          # out['feature']:[K,3]
+            loss   = torch.mean((out["feature"] - rgb_gt) ** 2)
+
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -343,40 +394,38 @@ def train_nerf(
             t_range.set_description(f'Epoch: {epoch:04d}, Loss: {loss:.06f}')
             t_range.refresh()
 
-        # Adjust the learning rate.
+        # 学习率
         lr_scheduler.step()
 
-        # Checkpoint.
-        if (
-            epoch % cfg.training.checkpoint_interval == 0
-            and len(cfg.training.checkpoint_path) > 0
-            and epoch > 0
-        ):
-            print(f"Storing checkpoint {checkpoint_path}.")
-
-            data_to_store = {
-                "model": model.state_dict(),
-                "optimizer": optimizer.state_dict(),
-                "epoch": epoch,
-            }
-
-            torch.save(data_to_store, checkpoint_path)
-
-        # Render
-        if (
-            epoch % cfg.training.render_interval == 0
-            and epoch > 0
-        ):
+        # 每隔 render_interval 个 epoch 渲染一次（用你给的全部相机）
+        if (epoch % cfg.training.render_interval == 0) and (epoch > 0) and (cameras_all is not None):
+            model.eval()
             with torch.no_grad():
-                test_images = render_images(
-                    model, create_surround_cameras(4.0, n_poses=20, up=(0.0, 0.0, 1.0), focal_length=2.0),
-                    cfg.data.image_size, file_prefix='nerf'
+                imgs = render_images(
+                    model, cameras_all, cfg.data.image_size,
+                    save=True, file_prefix='images/flower',
+                    nears=nears_all, fars=fars_all
                 )
-                imageio.mimsave('images/part_3.gif', [np.uint8(im * 255) for im in test_images], loop=0)
+                imageio.mimsave('images/flower.gif', [np.uint8(im*255) for im in imgs], duration=0.08)
+            model.train()
+
+        # 按需保存 checkpoint（可留可去）
+        if (epoch % cfg.training.checkpoint_interval == 0) and (len(cfg.training.checkpoint_path) > 0) and (epoch > 0):
+            print(f"Storing checkpoint {checkpoint_path}.")
+            torch.save(
+                {"model": model.state_dict(), "optimizer": optimizer.state_dict(), "epoch": epoch},
+                checkpoint_path
+            )
 
 
-@hydra.main(config_path='./configs', config_name='sphere')
+#@hydra.main(config_path='./configs', config_name='sphere')
+@hydra.main(config_path='./configs', config_name='nerf_flower')
 def main(cfg: DictConfig):
+
+    from omegaconf import OmegaConf
+    print("### EFFECTIVE CFG ###")
+    print(OmegaConf.to_yaml(cfg))
+
     os.chdir(hydra.utils.get_original_cwd())
 
     if cfg.type == 'render':

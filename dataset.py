@@ -26,6 +26,50 @@ DEFAULT_URL_ROOT = "https://dl.fbaipublicfiles.com/pytorch3d_nerf_data"
 ALL_DATASETS = ("lego", "fern", "pt3logo")
 
 
+# dataset.py
+import torch
+# 其他 import 保留
+
+from llff_loader import load_llff_from_poses_bounds  # 新增
+
+def trivial_collate(batch):
+    return batch
+
+def get_nerf_datasets(dataset_name: str, image_size, **kwargs):
+    """
+    image_size: [W, H]  或 [H, W] —— 你项目里传的是 [W, H]，下行记得转成 (H, W)
+    """
+    H, W = image_size[1], image_size[0]  # 统一转为 (H, W)
+
+    # ...这里保留你原来的其他数据集分支...
+
+    if dataset_name == "llff_custom":
+        images_dir = kwargs["images_dir"]
+        poses_bounds_path = kwargs["poses_bounds_path"]
+        downscale = int(kwargs.get("downscale", 1))
+
+        samples = load_llff_from_poses_bounds(
+            images_dir=images_dir,
+            poses_bounds_path=poses_bounds_path,
+            downscale=downscale,
+            device="cuda",
+            target_size=(H, W),   # 这里传 (H, W)
+        )
+
+        class _ListDataset(torch.utils.data.Dataset):
+            def __init__(self, items): self.items = items
+            def __len__(self): return len(self.items)
+            def __getitem__(self, i): return self.items[i]
+
+        n = len(samples)
+        n_train = max(1, int(0.9 * n))
+        return _ListDataset(samples[:n_train]), _ListDataset(samples[n_train:]), _ListDataset([])
+
+    # 如果没有匹配到，抛错让我们知道
+    raise ValueError(f"Unknown dataset_name: {dataset_name}")
+
+
+
 def trivial_collate(batch):
     """
     A trivial collate function that merely returns the uncollated batch.
